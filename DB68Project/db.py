@@ -3,6 +3,8 @@
 #  มองหาคำว่า  # TODO  ทุกฟังก์ชัน — ใช้ %s เป็น placeholder เสมอ (กัน SQL injection)
 # ============================================================
 
+from datetime import datetime
+
 import mysql.connector
 import config
 
@@ -133,6 +135,12 @@ def update_trainer(trainer_id, data):
 
 
 def delete_trainer(trainer_id):
+    rows = run_query(
+        "SELECT COUNT(*) AS total FROM gym_class WHERE trainer_id = %s",
+        (trainer_id,)
+    )
+    if rows[0]["total"] > 0:
+        raise ValueError("ยังมีคลาสที่ใช้เทรนเนอร์คนนี้ กรุณาเปลี่ยนเทรนเนอร์ของคลาสก่อน")
     return run_command("DELETE FROM trainer WHERE trainer_id=%s", (trainer_id,))
 
 
@@ -173,32 +181,54 @@ def get_class(class_id):
 
 
 def create_class(data):
+    trainer_id = blank_to_none(data.get("trainer_id"))
+    if trainer_id is None:
+        raise ValueError("กรุณาเลือกเทรนเนอร์ประจำคลาส")
+    schedule_time = blank_to_none(data.get("schedule_time"))
+    if schedule_time is None:
+        raise ValueError("กรุณาเลือกวันและเวลาเรียน")
+    try:
+        datetime.strptime(schedule_time, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        raise ValueError("กรุณากรอกวันและเวลาให้ถูกต้อง เช่น วันที่เลือก + เวลา 15:00")
+
     sql = """
         INSERT INTO gym_class (name, trainer_id, room, capacity, schedule_time)
         VALUES (%s, %s, %s, %s, %s)
     """
     params = (
         blank_to_none(data.get("name")), 
-        blank_to_none(data.get("trainer_id")), 
+        trainer_id,
         blank_to_none(data.get("room")), 
         blank_to_none(data.get("capacity")), 
-        blank_to_none(data.get("schedule_time"))
+        schedule_time
     )
     return run_command(sql, params)
 
 
 def update_class(class_id, data):
+    trainer_id = blank_to_none(data.get("trainer_id"))
+    if trainer_id is None:
+        raise ValueError("กรุณาเลือกเทรนเนอร์ประจำคลาส")
+    schedule_time = blank_to_none(data.get("schedule_time"))
+    if schedule_time is None:
+        raise ValueError("กรุณาเลือกวันและเวลาเรียน")
+    try:
+        datetime.strptime(schedule_time, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        raise ValueError("กรุณากรอกวันและเวลาให้ถูกต้อง เช่น วันที่เลือก + เวลา 15:00")
+
     sql = """
         UPDATE gym_class 
-        SET name=%s, trainer_id=%s, room=%s, capacity=%s, schedule_time=%s 
+        SET name=%s, trainer_id=%s, room=%s, capacity=%s, schedule_time=%s
         WHERE class_id=%s
     """
     params = (
         blank_to_none(data.get("name")), 
-        blank_to_none(data.get("trainer_id")), 
+        trainer_id,
         blank_to_none(data.get("room")), 
         blank_to_none(data.get("capacity")), 
-        blank_to_none(data.get("schedule_time")), 
+        schedule_time,
         class_id
     )
     return run_command(sql, params)

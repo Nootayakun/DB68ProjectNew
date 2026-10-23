@@ -24,12 +24,12 @@ CREATE TABLE trainer (
 -- 3. ตารางคลาสเรียน (gym_class)
 CREATE TABLE gym_class (
     class_id INT AUTO_INCREMENT PRIMARY KEY,
-    trainer_id INT,
+    trainer_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
     room VARCHAR(50),
     capacity INT NOT NULL CHECK (capacity > 0),
     schedule_time DATETIME NOT NULL,
-    FOREIGN KEY (trainer_id) REFERENCES trainer(trainer_id) ON DELETE SET NULL
+    FOREIGN KEY (trainer_id) REFERENCES trainer(trainer_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 -- 4. ตารางการจอง (booking)

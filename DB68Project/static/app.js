@@ -104,7 +104,7 @@ const ENTITIES = {
         "key": "trainer_id",
         "label": "เทรนเนอร์",
         "type": "select",
-        "includeEmpty": true,
+        "required": true,
         "optionsFrom": {
           "api": "/api/trainers",
           "value": "trainer_id",
@@ -123,8 +123,9 @@ const ENTITIES = {
       },
       {
         "key": "schedule_time",
-        "label": "เวลา",
-        "type": "text"
+        "label": "วันและเวลาเรียน (พิมพ์เวลา เช่น 15:00)",
+        "type": "datetime-manual",
+        "required": true
       }
     ]
   },
@@ -354,17 +355,29 @@ async function api(url, opts) { const res = await fetch(url, opts); return res.j
 function fieldHtml(f, prefix, value = "") {
   if (f.type === "heading") return '<div class="form-section">' + f.label + '</div>';
   let input;
-  if (f.type === "select") {
+  if (f.type === "datetime-manual") {
+    const normalizedValue = String(value ?? "").replace("T", " ");
+    const dateValue = normalizedValue ? normalizedValue.slice(0, 10) : "";
+    const timeValue = normalizedValue.length >= 16 ? normalizedValue.slice(11, 16) : "";
+    input = '<input id="' + prefix + f.key + '_date" type="date" value="' + dateValue + '"' +
+      (f.required ? " required" : "") + '> ' +
+      '<input id="' + prefix + f.key + '_time" type="text" value="' + timeValue +
+      '" placeholder="เช่น 15:00" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" maxlength="5"' +
+      (f.required ? " required" : "") + '>';
+  } else if (f.type === "select") {
     // options เป็นข้อความ "a" หรือ {value, label} ก็ได้
-    input = '<select id="' + prefix + f.key + '">' +
+    input = '<select id="' + prefix + f.key + '"' + (f.required ? " required" : "") + '>' +
       f.options.map(o => {
         const v = typeof o === "object" ? o.value : o;
         const t = typeof o === "object" ? o.label : (o || "ทั้งหมด");
         return '<option value="' + v + '"' + (String(v) === String(value ?? "") ? " selected" : "") + '>' + t + '</option>';
       }).join("") + '</select>';
   } else {
-    const inputValue = f.type === "date" && value ? String(value).slice(0, 10) : (value ?? "");
-    input = '<input id="' + prefix + f.key + '" type="' + f.type + '" value="' + inputValue + '">';
+    let inputValue = value ?? "";
+    if (f.type === "date" && value) inputValue = String(value).slice(0, 10);
+    if (f.type === "datetime-local" && value) inputValue = String(value).replace(" ", "T").slice(0, 16);
+    input = '<input id="' + prefix + f.key + '" type="' + f.type + '"' +
+      (f.required ? " required" : "") + ' value="' + inputValue + '">';
   }
   return '<div class="field"><label>' + f.label + '</label>' + input + '</div>';
 }
@@ -383,6 +396,7 @@ async function loadOptions(fields, forSearch) {
       });
     }
     if (forSearch && r.ok) f.options.unshift({ value: "", label: "ทั้งหมด" });
+    else if (f.required && r.ok) f.options.unshift({ value: "", label: "-- เลือกเทรนเนอร์ --" });
     else if (f.includeEmpty && r.ok) f.options.unshift({ value: "", label: "ไม่ระบุ" });
   }
 }
@@ -429,7 +443,27 @@ async function openForm(title, data = {}) {
   $("#formFields").innerHTML = formFields().map(f => fieldHtml(f, "f_", data[f.key])).join("");
   $("#modal").classList.remove("hidden");
 }
-function collectForm() { const d = {}; formFields().filter(f => f.key).forEach(f => d[f.key] = $("#f_" + f.key).value); return d; }
+function collectForm() {
+  const d = {};
+  formFields().filter(f => f.key).forEach(f => {
+    let value;
+    if (f.type === "datetime-manual") {
+      const date = $("#f_" + f.key + "_date");
+      const time = $("#f_" + f.key + "_time");
+      if (!date.checkValidity() || !time.checkValidity()) {
+        date.reportValidity();
+        time.reportValidity();
+        return;
+      }
+      value = date.value && time.value ? date.value + " " + time.value + ":00" : "";
+    } else {
+      value = $("#f_" + f.key).value;
+    }
+    d[f.key] = value;
+  });
+  if (formFields().some(f => f.type === "datetime-manual") && !d.schedule_time) return null;
+  return d;
+}
 async function editRow(id) {
   const cfg = ENTITIES[current];
   const r = await api(cfg.api + "/" + id);
@@ -444,6 +478,7 @@ async function deleteRow(id) {
 }
 async function save() {
   const cfg = ENTITIES[current], data = collectForm();
+  if (!data) return;
   const opts = { method: editingId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
   const r = await api(editingId ? cfg.api + "/" + editingId : cfg.api, opts);
   if (!r.ok) { alert((r.todo ? "🚧 " : "⚠️ ") + r.error); return; }
